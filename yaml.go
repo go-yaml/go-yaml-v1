@@ -308,16 +308,28 @@ func failf(format string, args ...interface{}) {
 	panic(yamlError{fmt.Errorf("yaml: "+format, args...)})
 }
 
+// UnmarshalError is each error with a source position found by Unmarshal.
+type UnmarshalError struct {
+	Message string
+	Line    int
+	Column  int
+}
+
 // A TypeError is returned by Unmarshal when one or more fields in
 // the YAML document cannot be properly decoded into the requested
 // types. When this error is returned, the value is still
 // unmarshaled partially.
 type TypeError struct {
-	Errors []string
+	Errors []UnmarshalError
 }
 
 func (e *TypeError) Error() string {
-	return fmt.Sprintf("yaml: unmarshal errors:\n  %s", strings.Join(e.Errors, "\n  "))
+	var b strings.Builder
+	b.WriteString("yaml: unmarshal errors:")
+	for _, err := range e.Errors {
+		b.WriteString(fmt.Sprintf("\n  line %d: %s", err.Line, err.Message))
+	}
+	return b.String()
 }
 
 type Kind uint32
