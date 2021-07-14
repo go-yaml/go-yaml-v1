@@ -307,6 +307,28 @@ func (p *parser) mapping() *Node {
 // ----------------------------------------------------------------------------
 // Decoder, unmarshals a node into a provided value.
 
+// DecodeOptions represents configuration for decoding.
+// Config could be initialized in "builder" style for convenience:
+// NewDecodeOptions().KnownFields(true).UniqueFields(true)
+type DecodeOptions struct {
+	knownFields bool
+	uniqueKeys  bool
+}
+
+func NewDecodeOptions() *DecodeOptions {
+	return &DecodeOptions{knownFields: false, uniqueKeys: true}
+}
+
+func (c *DecodeOptions) KnownFields(enabled bool) *DecodeOptions {
+	c.knownFields = enabled
+	return c
+}
+
+func (c *DecodeOptions) UniqueFields(enabled bool) *DecodeOptions {
+	c.uniqueKeys = enabled
+	return c
+}
+
 type decoder struct {
 	doc     *Node
 	aliases map[*Node]bool
@@ -315,8 +337,7 @@ type decoder struct {
 	stringMapType  reflect.Type
 	generalMapType reflect.Type
 
-	knownFields bool
-	uniqueKeys  bool
+	options     *DecodeOptions
 	decodeCount int
 	aliasCount  int
 	aliasDepth  int
@@ -332,11 +353,14 @@ var (
 	ptrTimeType    = reflect.TypeOf(&time.Time{})
 )
 
-func newDecoder() *decoder {
+func newDecoder(options *DecodeOptions) *decoder {
+	if options == nil {
+		options = NewDecodeOptions()
+	}
 	d := &decoder{
 		stringMapType:  stringMapType,
 		generalMapType: generalMapType,
-		uniqueKeys:     true,
+		options:        options,
 	}
 	d.aliases = make(map[*Node]bool)
 	return d
@@ -761,7 +785,7 @@ func (d *decoder) sequence(n *Node, out reflect.Value) (good bool) {
 
 func (d *decoder) mapping(n *Node, out reflect.Value) (good bool) {
 	l := len(n.Content)
-	if d.uniqueKeys {
+	if d.options.uniqueKeys {
 		nerrs := len(d.terrors)
 		for i := 0; i < l; i += 2 {
 			ni := n.Content[i]
@@ -871,7 +895,7 @@ func (d *decoder) mappingStruct(n *Node, out reflect.Value) (good bool) {
 	}
 
 	var doneFields []bool
-	if d.uniqueKeys {
+	if d.options.uniqueKeys {
 		doneFields = make([]bool, len(sinfo.FieldsList))
 	}
 	name := settableValueOf("")
@@ -886,7 +910,7 @@ func (d *decoder) mappingStruct(n *Node, out reflect.Value) (good bool) {
 			continue
 		}
 		if info, ok := sinfo.FieldsMap[name.String()]; ok {
-			if d.uniqueKeys {
+			if d.options.uniqueKeys {
 				if doneFields[info.Id] {
 					d.terrors = append(d.terrors, fmt.Sprintf("line %d: field %s already set in type %s", ni.Line, name.String(), out.Type()))
 					continue
@@ -907,7 +931,7 @@ func (d *decoder) mappingStruct(n *Node, out reflect.Value) (good bool) {
 			value := reflect.New(elemType).Elem()
 			d.unmarshal(n.Content[i+1], value)
 			inlineMap.SetMapIndex(name, value)
-		} else if d.knownFields {
+		} else if d.options.knownFields {
 			d.terrors = append(d.terrors, fmt.Sprintf("line %d: field %s not found in type %s", ni.Line, name.String(), out.Type()))
 		}
 	}
